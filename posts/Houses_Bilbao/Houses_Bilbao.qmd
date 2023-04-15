@@ -1,0 +1,622 @@
+---
+title: "Houses in Bilbao"
+subtitle: "A little Investigation"
+author: "Txomin Basterra Chang"
+date: "2023-04-15"
+image: "image.png"
+categories: [housing, Spain, code, analysis]
+editor: visual
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+```{r, message=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(readxl)
+library(openxlsx)
+library(lubridate)
+library(here)
+library(devtools)
+library(recipes) 
+library(rsample)
+library(timetk)
+library(glmnet)
+library(tidyquant)
+library(visdat)
+library(janitor)
+library(kableExtra)
+library(caret)
+library(rpart)  
+library(rpart.plot)
+library(pdp)
+library(vip)
+library(GGally)
+library(car)
+library(ggcorrplot)
+library(ggdensity)
+library(tidyquant)
+library(scico)
+library(paletteer)
+library(earth)
+library(vip)
+library(ranger)
+library(h2o)
+library(xgboost)
+library(modeltime)
+library(caret)
+library(lares)
+library(lmtest)
+library(nortest)
+library(auditor)
+library(DALEXtra)
+library(modelStudio)
+library(patchwork)
+
+theme_set(theme_minimal())
+```
+
+Bilbao is a city in northern Spain located in the province Biskaia. It is the largest metropolitan area and a economic and cultural center in the region.
+
+Knowing the housing market is valuable for sellers and buyers of real estate. Knowledge of the housing market can also provide a sence of understanding for socio-economic and socio-demographic local variations within a city.
+
+In this analysis I will explore Bilbao's housing market in search for an understanding of the driving factors of real estate prices.
+
+# Selecting the Data
+
+First, let's have a look at the features on the presence of missing data.
+
+```{r}
+load(file = here("Data", "Houses_Bilbao" ,"data.Rda"))
+
+vis_miss(data, cluster = TRUE)
+```
+
+Dropping features which have no data
+
+```{r}
+Bilbao <- data %>%
+  filter(loc_city == "Bilbao") %>%
+  select(-c(loc_city, garage, ad_description, ad_last_update, ground_size, kitchen, unfurnished, house_per_city, house_id, floor, loc_zone, loc_street, loc_neigh, obtention_date, orientation, loc_full, m2_useful)) %>%
+  mutate(price_m2 = price/m2_real) %>%
+  mutate(loc_district = gsub("Distrito", "", loc_district)) %>%
+  mutate(bath_num = as.numeric(bath_num)) %>%
+  filter(price_m2 >= quantile(price_m2, probs = 0.001)) %>%
+  filter(price_m2 <= quantile(price_m2, probs = 0.999)) %>%
+  mutate(condition = case_when(condition == "segunda mano/buen estado" ~ "used_ok",
+                               condition == "promoción de obra nueva" ~ "new",
+                               condition == "segunda mano/para reformar" ~ "used_to_reno")) %>%
+  mutate(heating_type = case_when(heating == "calefacción central" ~ "central",
+                             heating == "calefacción central: gas" ~ "central",
+                             heating == "calefacción central: gas propano/butano" ~ "central",
+                             heating == "calefacción central: gasoil" ~ "central",
+                             heating == "calefacción individual" ~ "individual",
+                             heating == "calefacción individual: bomba de frío/calor" ~ "individual",
+                             heating == "calefacción individual: eléctrica" ~ "individual",
+                             heating == "calefacción individual: gas" ~ "individual",
+                             heating == "calefacción individual: gas natural" ~ "individual",
+                             heating == "calefacción individual: gas propano/butano" ~ "individual",
+                             heating == "calefacción individual: gas propano/butano" ~ "individual",
+                             heating == "no dispone de calefacción" ~ "no_heat"
+                             )) %>%
+  mutate(id = row_number()) %>%
+  filter(id != 3239) %>%
+  select(-c(id, m2_real, heating, price)) 
+
+# Save File
+save(Bilbao, file = here("Data", "Houses_Bilbao", "Bilbao.Rda"))
+```
+
+# Summary Statistics
+
+```{r}
+Bilbao %>%
+  tabyl(loc_district) %>%
+  ggplot(aes(x = "", y = percent, fill = loc_district)) +
+           geom_bar(stat = "identity", width =1, color="white") +
+           coord_polar("y" , start = 0) +
+  scale_fill_tq() +
+  theme_minimal() +
+  ggtitle("Proportion of houses per district")
+```
+
+# Distribution of price per square meter (price_m2)
+
+Removing outliers \<01 and \>99 quantiles
+
+```{r}
+Bilbao %>%
+  group_by(loc_district) %>%
+  summarise(Min = min(price_m2),
+            Q25 = quantile(price_m2, probs = .25),
+            Median = median(price_m2),
+            Mean = mean(price_m2),
+            Q75 = quantile(price_m2, probs = .75),
+            Max = max(price_m2)) %>%
+  arrange(desc(Median)) %>%
+  kable(digits = 0, caption = "Statistic of price_m2 per district") %>%
+  kable_styling(full_width = T) 
+
+
+Bilbao %>%
+  summarise(Min = min(price_m2),
+            Q25 = quantile(price_m2, probs = .25),
+            Median = median(price_m2),
+            Mean = mean(price_m2),
+            Q75 = quantile(price_m2, probs = .75),
+            Max = max(price_m2)) %>%
+  arrange(desc(Median)) 
+
+
+Bilbao %>%
+  group_by(loc_district) %>%
+  ggplot(aes(x = loc_district, y = price_m2, fill = loc_district)) +
+  geom_boxplot() +
+  geom_hline(yintercept = 2962.963, linetype="dashed", color = "black") + # general Median
+  scale_fill_tq() +
+  theme_minimal() +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ggtitle("Boxplots of price_m2 per district") +
+  scale_y_continuous(labels = scales::dollar_format(prefix = "€"))
+
+
+Bilbao %>%
+  ggplot(aes(x = price_m2)) +
+  geom_histogram(bins = 100) +
+  ggtitle("House price/m2 in Euro") +
+  theme_minimal() 
+```
+
+# Overview of house features
+
+```{r, fig.width=11, fig.height=8}
+p1 <- Bilbao %>%
+  filter(room_num <= 5) %>%
+  tabyl(room_num, loc_district) %>%
+  pivot_longer(
+    cols = c(2:13),
+    names_to = "loc_district",
+    values_to = "Count"
+  ) %>%
+  group_by(loc_district) %>%
+  mutate(Sum = sum(Count)) %>%
+  mutate(Perc = Count/Sum * 100) %>%
+  ggplot(aes(x = loc_district, y = Perc, fill = loc_district)) +
+  geom_bar(position="dodge", stat = "identity") +
+  facet_grid(cols = vars(room_num)) +
+  scale_fill_tq() +
+  theme_minimal() +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  labs(title = "Percentage of Rooms per District") +
+  theme(legend.position = "none")
+
+p2 <- Bilbao %>%
+  ggplot(aes(x = heating_type, y = price_m2, fill = loc_district)) +
+  geom_bar(position="dodge", stat = "identity") +
+  scale_fill_tq() +
+  theme_minimal() +
+  labs(title = "Price_m2 per Heating Type") 
+
+p3 <- Bilbao %>%
+  tabyl(condition, loc_district) %>%
+  pivot_longer(
+    cols = c(2:13),
+    names_to = "loc_district",
+    values_to = "Count"
+  ) %>%
+  group_by(loc_district) %>%
+  ggplot(aes(x = loc_district, y = Count, fill = loc_district)) +
+  geom_bar(position="dodge", stat = "identity") +
+  facet_grid(cols = vars(condition)) +
+  scale_fill_tq() +
+  theme_minimal() +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  labs(title = "Absolute Count of House Condition per District") +
+  theme(legend.position = "none")
+
+
+p4 <- Bilbao %>%
+  ggplot(aes(x = condition, y = price_m2, fill = loc_district)) +
+  geom_bar(position="dodge", stat = "identity") +
+  scale_fill_tq() +
+  theme_minimal() +
+  labs(title = "Price_m2 per Condition") +
+  theme(legend.position = "none") 
+
+p1 + p2 + p3 + p4 + plot_layout(ncol=2, nrow = 2)
+```
+
+# Construction Date
+
+```{r}
+scatterplot(price_m2 ~ construct_date, data = Bilbao, grid = FALSE)
+```
+
+# Development of Housing and price
+
+```{r, fig.width=11, fig.height=8}
+# Hiogh density region
+Bilbao %>%
+  ggplot(aes(x =construct_date, y = price_m2, fill = loc_district)) +
+  geom_hdr(probs = c (0.9, 0.5)) +
+  geom_point(shape = 21, size = 1.5) +
+  scale_fill_tq() +
+  theme_tq() +
+  labs(title = "High density regions (Price_m2 ~ Date)") +
+  facet_wrap(~ loc_district)
+
+
+Bilbao %>%
+  filter(loc_district == " Abando - Albia" | loc_district == " San Ignacio" | loc_district == " Otxarkoaga - Txurdinaga") %>%
+  ggplot(aes(x =construct_date, y = price_m2, fill = loc_district)) +
+  geom_hdr(probs = c (0.9, 0.5)) +
+  geom_point(shape = 21, size = 1.5) +
+  scale_fill_tq() +
+  theme_tq() +
+  labs(title = "High density regions certain Neighborhoods")
+```
+
+# Looking at Correlations
+
+Correlations between all features and response.
+
+```{r, message=FALSE, fig.width=7, fig.height=7}
+
+numeric = Bilbao %>% 
+  select(where(is.numeric)) 
+
+ggcorr(numeric, label = TRUE, label_size = 2, label_color = "white") +
+  scale_fill_paletteer_c("viridis::plasma") +
+  labs(title = "Correlations (Numeric Variables)")
+```
+
+Correlations with response
+
+```{r, message=FALSE, fig.width=7, fig.height=7}
+Bilbao %>%
+  corr_var(price_m2)
+```
+
+# Modeling
+
+## Splitting the Data
+
+First we split the data into a train and test set where 3/4 of the whole data is reserved for training and the rest for testing. We also use `strata = "price_m2"` to make sure that the distribution of price_m2 is equal between training and test set.
+
+```{r}
+set.seed(123)
+split <- initial_split(Bilbao, prop = 0.75, 
+                       strata = "price_m2")
+data_train  <- training(split)
+data_test   <- testing(split)
+```
+
+## Missing Data
+
+There is missing data. Because some models (like OLS) cannot handle NAs we will interpolate these using a KNN Algorithm within out `recipe()`.
+
+```{r}
+vis_miss(Bilbao, cluster = TRUE)
+```
+
+## Create a Recipe
+
+The function `recipe()` allows to preprocess the data before modeling. It can be applied to training and testing data. The advantage of uf using `recipe()` is that it avoids data leakage between data sets. Data leakage occurs when data transformation steps are processed on the entire data set before it is subdivided into training and testing splits. E.g., if a min-max transformation would be applied on the whole data set before splitting, the individual splits would be biased towards to global minimum and maximum. In a resampling and cross validation context, `recipe()` ensures that the data preprocessing is conducted after every iteration of data splitting.
+
+```{r}
+model_rec <- recipe(
+  price_m2 ~ .,
+  data= data_train) %>% 
+  step_zv(all_predictors()) %>%
+  step_dummy(all_nominal()) %>%
+  step_impute_knn(all_predictors(), neighbors = 10) %>% 
+  prep(training = data_train, retain=TRUE, verbose=TRUE)
+
+trainSet.prep <- bake(model_rec, new_data = data_train, composition='matrix')
+trainSet = as.data.frame((trainSet.prep))
+
+testSet.prep<-bake(model_rec, new_data = data_test, composition='matrix')
+testSet = as.data.frame((testSet.prep))
+```
+
+# EXPERIMENTING WITH VARIOUS MODELS
+
+Let's first have a look at how weel different models perform on the data. For the resampling method we perform a 10-fold cross validation repeated 5 times.
+
+```{r}
+myControl = trainControl(method = 'cv', 
+                         number = 10, 
+                         repeats = 5,
+                         verboseIter = FALSE, 
+                         savePredictions = TRUE,
+                         allowParallel = T)
+
+
+parallel_start(6)
+
+set.seed(174)
+Linear.Model = train(price_m2 ~., 
+                     data = trainSet, 
+                     metric = 'RMSE', 
+                     method = 'lm',
+                     preProcess = c('center', 'scale'),
+                     trControl = myControl)
+
+
+set.seed(174)
+Glmnet.Model = train(price_m2 ~ ., 
+                     data = trainSet , 
+                     metric = 'RMSE', 
+                     method = 'glmnet',
+                     preProcess = c('center', 'scale'), 
+                     trControl = myControl)
+
+
+set.seed(174)
+Rapid.Ranger = train(price_m2 ~ ., 
+                     data = trainSet, 
+                     metric = 'RMSE', 
+                     method = 'ranger',
+                     preProcess = c('center', 'scale'),
+                     trControl = myControl)
+
+
+set.seed(174)
+Basic.Knn <- train(price_m2 ~ .,
+             method     = "knn",
+             tuneGrid   = expand.grid(k =1:3), 
+             trControl  = myControl, 
+             metric= "RMSE", 
+             data = trainSet)
+
+
+set.seed(174)
+Xgb.Super <- train(price_m2~.,
+                   method = "xgbTree", 
+                   tuneLength = 4,
+                   trControl = myControl,
+                   metric= "RMSE", 
+                   data = trainSet)
+
+parallel_stop()
+```
+
+```{r}
+suite.of.models = list("LINEAR.MODEL" = Linear.Model,
+                       "GLMNET.MODEL" = Glmnet.Model, 
+                       "RANGER.QUEST" = Rapid.Ranger, 
+                       "KNN.SIMPLE" = Basic.Knn, 
+                       "XGB.SUPER"= Xgb.Super)
+
+resamps = resamples(suite.of.models) 
+dotplot(resamps, metric = 'RMSE')
+```
+
+XGBoost perfomes best on the train data. Let's test it on the test data.
+
+# TESTING MODELS ON TEST SET
+
+```{r}
+Evaluate.Prediction <- function(model, model.label, testData, ytest, grid = NULL) {
+ 
+  #capture prediction time
+  ptm <- proc.time()
+  # use test data to make predictions
+  pred <- predict(model, testData)
+  tm <- proc.time() - ptm
+  
+  Pred.metric<- postResample(pred = pred, obs = ytest)
+  RMSE.test <- c(Pred.metric[[1]])
+  RSquared.test <- c(Pred.metric[[2]])
+  MAE.test <- c(Pred.metric[[3]])
+  
+  
+  Summarised.results = NULL
+  if (is.null(grid)) { 
+    Summarised.results = data.frame(predictor = c(model.label) ,  RMSE = RMSE.test , RSquared = RSquared.test, MAE = MAE.test, time = c(tm[[3]]))
+  } else {
+    .grid = data.frame(predictor = c(model.label) , RMSE = RMSE.test , RSquared = RSquared.test, MAE = MAE.test, time = c(tm[[3]]))
+    Summarised.results = rbind(grid, .grid)}
+  
+  
+  Summarised.results }
+
+
+METRIC.GRID <- Evaluate.Prediction (Rapid.Ranger, "RAPID.QUEST", testSet, testSet$price_m2, grid=NULL)
+
+METRIC.GRID <- Evaluate.Prediction (Glmnet.Model, "GLMNET.MODEL", testSet, testSet$price_m2, grid=METRIC.GRID)
+
+METRIC.GRID <- Evaluate.Prediction (Basic.Knn, "KNN.SIMPLE", testSet, testSet$price_m2, grid=METRIC.GRID)
+
+METRIC.GRID <- Evaluate.Prediction (Linear.Model, "LINEAR.MODEL", testSet, testSet$price_m2, grid=METRIC.GRID)
+
+METRIC.GRID <- Evaluate.Prediction (Xgb.Super, "XGB.SUPER", testSet, testSet$price_m2, grid=METRIC.GRID)
+
+
+kable(METRIC.GRID[order(METRIC.GRID$RMSE, decreasing=F),]) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+Also here, XGBoost has the smallest RMSE and highest R2. Let's tune this model for further examination
+
+# XGBoost Modelling
+
+## Preprocessing
+
+First we start again by divide data into training and testing samples. Again, we use `price_m2` as a strata to ensure that the distribution of the response is eqaul between the testing and training sets. Then we create a recipe.
+
+```{r}
+set.seed(123)
+split <- initial_split(Bilbao, prop = 0.75, 
+                       strata = "price_m2")
+data_train  <- training(split)
+data_test   <- testing(split)
+
+XGB_rec <- recipe(
+  price_m2 ~ .,
+  data= data_train) %>% 
+  step_zv(all_predictors()) %>%
+  step_dummy(all_nominal()) %>%
+  step_impute_knn(all_predictors(), neighbors = 10) %>% 
+  prep()
+```
+
+Apply pre-processing to randomly divide train data in subsets.
+
+```{r, message=FALSE}
+set.seed(123)
+cv_folds <-recipes::bake(
+    XGB_rec, 
+    new_data = data_train)%>%  
+  rsample::vfold_cv(v = 5)
+```
+
+Transform train and test data with recipe
+
+```{r, message = FALSE, warning = FALSE, results = FALSE, include = FALSE}
+train.ready<-juice(XGB_rec)
+test.ready<-bake(XGB_rec, new_data = data_test)
+```
+
+## Modelling specifications
+
+Define XGBoost modelling specifications and to be tuned hyperparameters
+
+```{r}
+Model.XGB <- 
+  boost_tree(
+    mode = "regression",
+    trees = 1000,
+    min_n = tune(),
+    tree_depth = tune(),
+    learn_rate = tune(),
+    loss_reduction = tune()) %>% 
+  set_engine("xgboost", objective = "reg:squarederror")
+```
+
+### Specify the model parameters
+
+```{r}
+# grid specification 
+XGB.aspects <- 
+  dials::parameters(
+    min_n(),
+    tree_depth(),
+    learn_rate(),
+    loss_reduction())
+```
+
+### Srid Space
+
+Set up a grid space which covers the hyperparameters `XGB.aspects`.
+
+```{r}
+xgboost_grid <- 
+dials::grid_max_entropy(
+XGB.aspects, size = 200)
+kable(head(xgboost_grid))
+```
+
+### Create a workflow
+
+```{r}
+xgboost_wf <- 
+workflows::workflow() %>%
+add_model(Model.XGB) %>% 
+add_formula(price_m2 ~ .)
+```
+
+### Hyperparameter searching
+
+In this step R searches for the optimal hyperparameters by iteratively applying the different hyperparameters to multiple trainig samples. This step can take a while to compute.
+
+```{r, eval=FALSE}
+'parallel_start(6)
+
+TUNE.XGB <- tune::tune_grid(
+  object = xgboost_wf,
+  resamples = cv_folds,
+  grid = xgboost_grid,
+  metrics = yardstick::metric_set(yardstick::rmse, yardstick::rsq, yardstick::rsq_trad, yardstick::mae),
+  control = tune::control_grid(verbose = FALSE)) 
+
+parallel_stop()
+
+saveRDS(TUNE.XGB, file = here("Data", "Tune_XGB.RData"))'
+```
+
+### Finalize optimal tune
+
+Extract parameters with lowest rmse
+
+```{r}
+TUNE.XGB <- readRDS(here("Data", "Houses_Bilbao","Tune_XGB.RData"))
+
+param_final <- TUNE.XGB %>%select_best(metric = "rmse")
+```
+
+Finalize XGBoost with optimal tune.
+
+```{r}
+xgboost_wf2 <- xgboost_wf%>%
+finalize_workflow(param_final)
+```
+
+### Fit the final model
+
+#### Fit final model on the preprocessed training data.
+
+```{r}
+XGB.model <- xgboost_wf2 %>%
+fit(train.ready)
+```
+
+Extract important features.
+
+```{r}
+XGB.model %>% 
+  pull_workflow_fit() %>% 
+  vip()
+```
+
+#### Predict on thest set.
+
+```{r}
+# use the training model fit to predict the test data
+XGB_res <- predict(XGB.model, new_data = test.ready %>% select(-price_m2))
+
+XGB_res <- bind_cols(XGB_res, test.ready %>% select(price_m2))
+
+XGB_metrics <- metric_set(yardstick::rmse, yardstick:: mae)
+
+kable(XGB_metrics(XGB_res, truth = price_m2, estimate = .pred))
+
+
+ggplot(XGB_res, aes(x = price_m2, y = .pred)) + 
+    # Create a diagonal line:
+    geom_abline(lty = 2) + 
+    geom_point(alpha = 0.5) + 
+    labs(y = "Predicted Sale Price", x = "SalePrice") +
+    # Scale and size the x- and y-axis uniformly:
+    coord_obs_pred() +
+  theme_minimal()
+```
+
+# Explainer
+
+```{r, message=FALSE, warning=FALSE}
+explainer<- explain_tidymodels(model = XGB.model,
+                    data = test.ready,
+                    y = test.ready$price_m2,
+                    label = "XGBoost")
+
+modelStudio(explainer)
+```

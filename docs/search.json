@@ -1,0 +1,72 @@
+[
+  {
+    "objectID": "posts/post-with-code/index.html",
+    "href": "posts/post-with-code/index.html",
+    "title": "Post With Code",
+    "section": "",
+    "text": "This is a post with executable code.\n\n1 + 1\n\n[1] 2"
+  },
+  {
+    "objectID": "posts/welcome/index.html",
+    "href": "posts/welcome/index.html",
+    "title": "Welcome To My Blog",
+    "section": "",
+    "text": "This is the first post in a Quarto blog. Welcome!\n\nSince this post doesn’t specify an explicit image, the first image in the post will be used in the listing page of posts."
+  },
+  {
+    "objectID": "posts/Houses_Bilbao/Houses_Bilbao.html",
+    "href": "posts/Houses_Bilbao/Houses_Bilbao.html",
+    "title": "Houses in Bilbao",
+    "section": "",
+    "text": "library(tidyverse)\nlibrary(tidymodels)\nlibrary(readxl)\nlibrary(openxlsx)\nlibrary(lubridate)\nlibrary(here)\nlibrary(devtools)\nlibrary(recipes) \nlibrary(rsample)\nlibrary(timetk)\nlibrary(glmnet)\nlibrary(tidyquant)\nlibrary(visdat)\nlibrary(janitor)\nlibrary(kableExtra)\nlibrary(caret)\nlibrary(rpart)  \nlibrary(rpart.plot)\nlibrary(pdp)\nlibrary(vip)\nlibrary(GGally)\nlibrary(car)\nlibrary(ggcorrplot)\nlibrary(ggdensity)\nlibrary(tidyquant)\nlibrary(scico)\nlibrary(paletteer)\nlibrary(earth)\nlibrary(vip)\nlibrary(ranger)\nlibrary(h2o)\nlibrary(xgboost)\nlibrary(modeltime)\nlibrary(caret)\nlibrary(lares)\nlibrary(lmtest)\nlibrary(nortest)\nlibrary(auditor)\nlibrary(DALEXtra)\nlibrary(modelStudio)\nlibrary(patchwork)\n\ntheme_set(theme_minimal())\nBilbao is a city in northern Spain located in the province Biskaia. It is the largest metropolitan area and a economic and cultural center in the region.\nKnowing the housing market is valuable for sellers and buyers of real estate. Knowledge of the housing market can also provide a sence of understanding for socio-economic and socio-demographic local variations within a city.\nIn this analysis I will explore Bilbao’s housing market in search for an understanding of the driving factors of real estate prices."
+  },
+  {
+    "objectID": "posts/Houses_Bilbao/Houses_Bilbao.html#splitting-the-data",
+    "href": "posts/Houses_Bilbao/Houses_Bilbao.html#splitting-the-data",
+    "title": "Houses in Bilbao",
+    "section": "Splitting the Data",
+    "text": "Splitting the Data\nFirst we split the data into a train and test set where 3/4 of the whole data is reserved for training and the rest for testing. We also use strata = \"price_m2\" to make sure that the distribution of price_m2 is equal between training and test set.\n\nset.seed(123)\nsplit <- initial_split(Bilbao, prop = 0.75, \n                       strata = \"price_m2\")\ndata_train  <- training(split)\ndata_test   <- testing(split)"
+  },
+  {
+    "objectID": "posts/Houses_Bilbao/Houses_Bilbao.html#missing-data",
+    "href": "posts/Houses_Bilbao/Houses_Bilbao.html#missing-data",
+    "title": "Houses in Bilbao",
+    "section": "Missing Data",
+    "text": "Missing Data\nThere is missing data. Because some models (like OLS) cannot handle NAs we will interpolate these using a KNN Algorithm within out recipe().\n\nvis_miss(Bilbao, cluster = TRUE)"
+  },
+  {
+    "objectID": "posts/Houses_Bilbao/Houses_Bilbao.html#create-a-recipe",
+    "href": "posts/Houses_Bilbao/Houses_Bilbao.html#create-a-recipe",
+    "title": "Houses in Bilbao",
+    "section": "Create a Recipe",
+    "text": "Create a Recipe\nThe function recipe() allows to preprocess the data before modeling. It can be applied to training and testing data. The advantage of uf using recipe() is that it avoids data leakage between data sets. Data leakage occurs when data transformation steps are processed on the entire data set before it is subdivided into training and testing splits. E.g., if a min-max transformation would be applied on the whole data set before splitting, the individual splits would be biased towards to global minimum and maximum. In a resampling and cross validation context, recipe() ensures that the data preprocessing is conducted after every iteration of data splitting.\n\nmodel_rec <- recipe(\n  price_m2 ~ .,\n  data= data_train) %>% \n  step_zv(all_predictors()) %>%\n  step_dummy(all_nominal()) %>%\n  step_impute_knn(all_predictors(), neighbors = 10) %>% \n  prep(training = data_train, retain=TRUE, verbose=TRUE)\n\noper 1 step zv [training] \noper 2 step dummy [training] \noper 3 step impute knn [training] \nThe retained training set is ~ 0.97 Mb  in memory.\n\ntrainSet.prep <- bake(model_rec, new_data = data_train, composition='matrix')\ntrainSet = as.data.frame((trainSet.prep))\n\ntestSet.prep<-bake(model_rec, new_data = data_test, composition='matrix')\ntestSet = as.data.frame((testSet.prep))"
+  },
+  {
+    "objectID": "posts/Houses_Bilbao/Houses_Bilbao.html#preprocessing",
+    "href": "posts/Houses_Bilbao/Houses_Bilbao.html#preprocessing",
+    "title": "Houses in Bilbao",
+    "section": "Preprocessing",
+    "text": "Preprocessing\nFirst we start again by divide data into training and testing samples. Again, we use price_m2 as a strata to ensure that the distribution of the response is eqaul between the testing and training sets. Then we create a recipe.\n\nset.seed(123)\nsplit <- initial_split(Bilbao, prop = 0.75, \n                       strata = \"price_m2\")\ndata_train  <- training(split)\ndata_test   <- testing(split)\n\nXGB_rec <- recipe(\n  price_m2 ~ .,\n  data= data_train) %>% \n  step_zv(all_predictors()) %>%\n  step_dummy(all_nominal()) %>%\n  step_impute_knn(all_predictors(), neighbors = 10) %>% \n  prep()\n\nApply pre-processing to randomly divide train data in subsets.\n\nset.seed(123)\ncv_folds <-recipes::bake(\n    XGB_rec, \n    new_data = data_train)%>%  \n  rsample::vfold_cv(v = 5)\n\nTransform train and test data with recipe"
+  },
+  {
+    "objectID": "posts/Houses_Bilbao/Houses_Bilbao.html#modelling-specifications",
+    "href": "posts/Houses_Bilbao/Houses_Bilbao.html#modelling-specifications",
+    "title": "Houses in Bilbao",
+    "section": "Modelling specifications",
+    "text": "Modelling specifications\nDefine XGBoost modelling specifications and to be tuned hyperparameters\n\nModel.XGB <- \n  boost_tree(\n    mode = \"regression\",\n    trees = 1000,\n    min_n = tune(),\n    tree_depth = tune(),\n    learn_rate = tune(),\n    loss_reduction = tune()) %>% \n  set_engine(\"xgboost\", objective = \"reg:squarederror\")\n\n\nSpecify the model parameters\n\n# grid specification \nXGB.aspects <- \n  dials::parameters(\n    min_n(),\n    tree_depth(),\n    learn_rate(),\n    loss_reduction())\n\n\n\nSrid Space\nSet up a grid space which covers the hyperparameters XGB.aspects.\n\nxgboost_grid <- \ndials::grid_max_entropy(\nXGB.aspects, size = 200)\nkable(head(xgboost_grid))\n\n\n\n \n  \n    min_n \n    tree_depth \n    learn_rate \n    loss_reduction \n  \n \n\n  \n    19 \n    4 \n    0.0000000 \n    0.0024421 \n  \n  \n    15 \n    11 \n    0.0502801 \n    0.0000204 \n  \n  \n    38 \n    3 \n    0.0000000 \n    0.0000000 \n  \n  \n    7 \n    10 \n    0.0000001 \n    0.0002759 \n  \n  \n    38 \n    8 \n    0.0000000 \n    0.0000001 \n  \n  \n    37 \n    5 \n    0.0287556 \n    0.0000003 \n  \n\n\n\n\n\n\n\nCreate a workflow\n\nxgboost_wf <- \nworkflows::workflow() %>%\nadd_model(Model.XGB) %>% \nadd_formula(price_m2 ~ .)\n\n\n\nHyperparameter searching\nIn this step R searches for the optimal hyperparameters by iteratively applying the different hyperparameters to multiple trainig samples. This step can take a while to compute.\n\n'parallel_start(6)\n\nTUNE.XGB <- tune::tune_grid(\n  object = xgboost_wf,\n  resamples = cv_folds,\n  grid = xgboost_grid,\n  metrics = yardstick::metric_set(yardstick::rmse, yardstick::rsq, yardstick::rsq_trad, yardstick::mae),\n  control = tune::control_grid(verbose = FALSE)) \n\nparallel_stop()\n\nsaveRDS(TUNE.XGB, file = here(\"Data\", \"Tune_XGB.RData\"))'\n\n\n\nFinalize optimal tune\nExtract parameters with lowest rmse\n\nTUNE.XGB <- readRDS(here(\"Data\", \"Houses_Bilbao\",\"Tune_XGB.RData\"))\n\nparam_final <- TUNE.XGB %>%select_best(metric = \"rmse\")\n\nFinalize XGBoost with optimal tune.\n\nxgboost_wf2 <- xgboost_wf%>%\nfinalize_workflow(param_final)\n\n\n\nFit the final model\n\nFit final model on the preprocessed training data.\n\nXGB.model <- xgboost_wf2 %>%\nfit(train.ready)\n\nExtract important features.\n\nXGB.model %>% \n  pull_workflow_fit() %>% \n  vip()\n\n\n\n\n\n\nPredict on thest set.\n\n# use the training model fit to predict the test data\nXGB_res <- predict(XGB.model, new_data = test.ready %>% select(-price_m2))\n\nXGB_res <- bind_cols(XGB_res, test.ready %>% select(price_m2))\n\nXGB_metrics <- metric_set(yardstick::rmse, yardstick:: mae)\n\nkable(XGB_metrics(XGB_res, truth = price_m2, estimate = .pred))\n\n\n\n \n  \n    .metric \n    .estimator \n    .estimate \n  \n \n\n  \n    rmse \n    standard \n    799.5876 \n  \n  \n    mae \n    standard \n    590.3934 \n  \n\n\n\n\nggplot(XGB_res, aes(x = price_m2, y = .pred)) + \n    # Create a diagonal line:\n    geom_abline(lty = 2) + \n    geom_point(alpha = 0.5) + \n    labs(y = \"Predicted Sale Price\", x = \"SalePrice\") +\n    # Scale and size the x- and y-axis uniformly:\n    coord_obs_pred() +\n  theme_minimal()"
+  },
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "Txo’s Blog",
+    "section": "",
+    "text": "Post With Code\n\n\n\n\n\n\n\nnews\n\n\ncode\n\n\nanalysis\n\n\n\n\n\n\n\n\n\n\n\nApr 15, 2023\n\n\nHarlow Malloc\n\n\n\n\n\n\n  \n\n\n\n\nHouses in Bilbao\n\n\nA little Investigation\n\n\n\n\nhousing\n\n\nSpain\n\n\ncode\n\n\nanalysis\n\n\n\n\n\n\n\n\n\n\n\nApr 15, 2023\n\n\nTxomin Basterra Chang\n\n\n\n\n\n\n  \n\n\n\n\nWelcome To My Blog\n\n\n\n\n\n\n\nnews\n\n\n\n\n\n\n\n\n\n\n\nApr 12, 2023\n\n\nTristan O’Malley\n\n\n\n\n\n\nNo matching items"
+  },
+  {
+    "objectID": "about.html",
+    "href": "about.html",
+    "title": "About",
+    "section": "",
+    "text": "About this blog"
+  }
+]
