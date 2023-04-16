@@ -8,13 +8,14 @@ website:
     right:
       - about.qmd
       - icon: github
-        href: https://github.com/
+        href: https://github.com/TxominBasterraChang/txos_blog 
       - icon: twitter
         href: https://twitter.com
 format:
   html:
     theme: flatly
     css: styles.css
+    toc: true
 
 editor: visual
 

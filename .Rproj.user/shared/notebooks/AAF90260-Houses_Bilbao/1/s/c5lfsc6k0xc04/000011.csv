@@ -1,3 +1,0 @@
-"0","load(file = here(""Data"", ""Houses_Bilbao"" ,""data.Rda""))"
-"0",""
-"0","vis_miss(data, cluster = TRUE)"

@@ -2,9 +2,9 @@
   {
     "listing": "/index.html",
     "items": [
-      "/posts/post-with-code/index.html",
       "/posts/Houses_Bilbao/Houses_Bilbao.html",
-      "/posts/welcome/index.html"
+      "/posts/text_analysis_houses_bizkaia/Text_Analysis.html",
+      "/posts/Historical_Background/HB.html"
     ]
   }
 ]

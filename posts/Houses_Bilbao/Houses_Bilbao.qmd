@@ -54,19 +54,19 @@ library(auditor)
 library(DALEXtra)
 library(modelStudio)
 library(patchwork)
-
-theme_set(theme_minimal())
 ```
 
-Bilbao is a city in northern Spain located in the province Biskaia. It is the largest metropolitan area and a economic and cultural center in the region.
+What determines the price of houses in Bilbao? I want to investigate this question using Kaggle's [Spanish Housing Dataset](https://www.kaggle.com/datasets/thedevastator/spanish-housing-dataset-location-size-price-and) which was originally web-crawled from [Idealista](https://www.idealista.com) (between March-April 2019).
 
-Knowing the housing market is valuable for sellers and buyers of real estate. Knowledge of the housing market can also provide a sence of understanding for socio-economic and socio-demographic local variations within a city.
+Knowledge of the housing market is not only valuable for sellers and buyers of real estate but can also provide profound understanding of socio-economic and socio-demographic local variations within a city.
+
+Bilbao is a city in northern Spain located in the province Bizkaia. It is the largest metropolitan area in the region and an economic and cultural hub.
 
 In this analysis I will explore Bilbao's housing market in search for an understanding of the driving factors of real estate prices.
 
 # Selecting the Data
 
-First, let's have a look at the features on the presence of missing data.
+First, let's have a look at the features and the presence of missing data.
 
 ```{r}
 load(file = here("Data", "Houses_Bilbao" ,"data.Rda"))
@@ -74,7 +74,9 @@ load(file = here("Data", "Houses_Bilbao" ,"data.Rda"))
 vis_miss(data, cluster = TRUE)
 ```
 
-Dropping features which have no data
+The data has many variables, but we are particularly interested in features such as **construction year**, **district**, **number of rooms**, **lift** and **number of bathrooms**, etc. to regress on our response **price per square meter**.
+
+Let's first drop features which have no data to build our working data set.
 
 ```{r}
 Bilbao <- data %>%
@@ -122,7 +124,9 @@ Bilbao %>%
   ggtitle("Proportion of houses per district")
 ```
 
-# Distribution of price per square meter (price_m2)
+The graphic shows the proportion houses per district. In some cases two adjacent districts were grouped together in the data.
+
+# Square Meter Prices per District
 
 Removing outliers \<01 and \>99 quantiles
 
@@ -136,10 +140,14 @@ Bilbao %>%
             Q75 = quantile(price_m2, probs = .75),
             Max = max(price_m2)) %>%
   arrange(desc(Median)) %>%
+  dplyr::rename(District = loc_district) %>%
   kable(digits = 0, caption = "Statistic of price_m2 per district") %>%
-  kable_styling(full_width = T) 
+  kable_styling(full_width = T)
+```
 
+It is better to visualize the table in a boxplot.
 
+```{r}
 Bilbao %>%
   summarise(Min = min(price_m2),
             Q25 = quantile(price_m2, probs = .25),
@@ -147,9 +155,10 @@ Bilbao %>%
             Mean = mean(price_m2),
             Q75 = quantile(price_m2, probs = .75),
             Max = max(price_m2)) %>%
-  arrange(desc(Median)) 
+  arrange(desc(Median))
+```
 
-
+```{r}
 Bilbao %>%
   group_by(loc_district) %>%
   ggplot(aes(x = loc_district, y = price_m2, fill = loc_district)) +
@@ -162,19 +171,26 @@ Bilbao %>%
         axis.ticks.x=element_blank()) +
   ggtitle("Boxplots of price_m2 per district") +
   scale_y_continuous(labels = scales::dollar_format(prefix = "€"))
+```
+The districts Abando/Albia and Indautxu stand out for having particularly high square meter prices which are pushing the population median upwards. The differences between the other districts are comparabily not so high.  
 
+Let's also have a look on the general distribution of `price_m2`
 
+```{r}
 Bilbao %>%
   ggplot(aes(x = price_m2)) +
   geom_histogram(bins = 100) +
   ggtitle("House price/m2 in Euro") +
+  scale_x_continuous(labels = scales::dollar_format(prefix = "€")) +
   theme_minimal() 
 ```
+
+The distribution is relatively normal with a slight skewness to the right. 
 
 # Overview of house features
 
 ```{r, fig.width=11, fig.height=8}
-p1 <- Bilbao %>%
+Bilbao %>%
   filter(room_num <= 5) %>%
   tabyl(room_num, loc_district) %>%
   pivot_longer(
@@ -193,17 +209,23 @@ p1 <- Bilbao %>%
   theme(axis.title.x=element_blank(),
         axis.text.x=element_blank(),
         axis.ticks.x=element_blank()) +
-  labs(title = "Percentage of Rooms per District") +
-  theme(legend.position = "none")
+  labs(title = "Percentage of Rooms per District")
+```
+Most dwellings have 3 rooms. Interestingly Casco Viejo has a ove rproportionally many one room appartments while Indautxu and Abando have proportionally the largest number of 5 rooms.
 
-p2 <- Bilbao %>%
+```{r, fig.width=11, fig.height=8}
+Bilbao %>%
   ggplot(aes(x = heating_type, y = price_m2, fill = loc_district)) +
   geom_bar(position="dodge", stat = "identity") +
   scale_fill_tq() +
   theme_minimal() +
-  labs(title = "Price_m2 per Heating Type") 
+  labs(title = "Price_m2 per Heating Type") +
+  scale_y_continuous(labels = scales::dollar_format(prefix = "€"))
+```
+The type of heating doesn't seem to affect very much. 
 
-p3 <- Bilbao %>%
+```{r, fig.width=11, fig.height=8}
+Bilbao %>%
   tabyl(condition, loc_district) %>%
   pivot_longer(
     cols = c(2:13),
@@ -219,28 +241,28 @@ p3 <- Bilbao %>%
   theme(axis.title.x=element_blank(),
         axis.text.x=element_blank(),
         axis.ticks.x=element_blank()) +
-  labs(title = "Absolute Count of House Condition per District") +
-  theme(legend.position = "none")
+  labs(title = "Absolute Count of House Condition per District")
+```
+The majority of houses in the markets are second hand appartments in good condition.
 
-
-p4 <- Bilbao %>%
+```{r, fig.width=11, fig.height=8}
+Bilbao %>%
   ggplot(aes(x = condition, y = price_m2, fill = loc_district)) +
   geom_bar(position="dodge", stat = "identity") +
   scale_fill_tq() +
   theme_minimal() +
-  labs(title = "Price_m2 per Condition") +
-  theme(legend.position = "none") 
-
-p1 + p2 + p3 + p4 + plot_layout(ncol=2, nrow = 2)
+  labs(title = "Price_m2 per Condition") 
 ```
+At first sight, it seems counter intuitive that new apartments cost less than second hand per sqare meter. Because of the hilliness of Bilbao, it might be that the new buildings are build in more peripheral areas of a district and therefore have a lower square meter price.
 
 # Construction Date
 
 ```{r}
 scatterplot(price_m2 ~ construct_date, data = Bilbao, grid = FALSE)
 ```
+We see that there obvious relation between construction year and square meter price. Ad the same time we can observe that a great amount of houses were built during the period 1960-1975 corresponding to large migration from other Spanish provinces. 
 
-# Development of Housing and price
+# Development of Housing and Price
 
 ```{r, fig.width=11, fig.height=8}
 # Hiogh density region
@@ -252,8 +274,10 @@ Bilbao %>%
   theme_tq() +
   labs(title = "High density regions (Price_m2 ~ Date)") +
   facet_wrap(~ loc_district)
+```
+We can see that houses within district often share similar price ranges and construction years. Some older district live through a longer period of continuous construction, whereas in other construction seemed to had ben concentrated in smaller period. 
 
-
+```{r, fig.width=11, fig.height=8}
 Bilbao %>%
   filter(loc_district == " Abando - Albia" | loc_district == " San Ignacio" | loc_district == " Otxarkoaga - Txurdinaga") %>%
   ggplot(aes(x =construct_date, y = price_m2, fill = loc_district)) +
@@ -263,10 +287,11 @@ Bilbao %>%
   theme_tq() +
   labs(title = "High density regions certain Neighborhoods")
 ```
+The clustering is specially visible for theese districts in a single graph.
 
 # Looking at Correlations
 
-Correlations between all features and response.
+First, let us look at the correlations between all numeric features and response. 
 
 ```{r, message=FALSE, fig.width=7, fig.height=7}
 
@@ -278,18 +303,20 @@ ggcorr(numeric, label = TRUE, label_size = 2, label_color = "white") +
   labs(title = "Correlations (Numeric Variables)")
 ```
 
-Correlations with response
+Especially important are the correlations with response variable. 
 
 ```{r, message=FALSE, fig.width=7, fig.height=7}
 Bilbao %>%
   corr_var(price_m2)
 ```
+Using the simple correlation we can see that being loacted in the district of Abando/Albia has the highest positive correlation with the square meter price. 
 
 # Modeling
+Now, since we got an overview of the data, we can start to analyzenthe relationships between the features and the response more in depth.
 
 ## Splitting the Data
 
-First we split the data into a train and test set where 3/4 of the whole data is reserved for training and the rest for testing. We also use `strata = "price_m2"` to make sure that the distribution of price_m2 is equal between training and test set.
+First we split the data into a train and test set where 3/4 of the whole data is reserved for training and the rest for testing. We also use `strata = "price_m2"` to make sure that the distribution of price_m2 is equal between training and testing set.
 
 ```{r}
 set.seed(123)
@@ -301,7 +328,7 @@ data_test   <- testing(split)
 
 ## Missing Data
 
-There is missing data. Because some models (like OLS) cannot handle NAs we will interpolate these using a KNN Algorithm within out `recipe()`.
+There is missing data. Because some models (like OLS) cannot handle NAs we will interpolate these using a KNN Algorithm.
 
 ```{r}
 vis_miss(Bilbao, cluster = TRUE)
@@ -327,9 +354,12 @@ testSet.prep<-bake(model_rec, new_data = data_test, composition='matrix')
 testSet = as.data.frame((testSet.prep))
 ```
 
-# EXPERIMENTING WITH VARIOUS MODELS
 
-Let's first have a look at how weel different models perform on the data. For the resampling method we perform a 10-fold cross validation repeated 5 times.
+# Experimenting with various Models
+
+Let's first have a look at how well different models perform on the data. For the resampling method we perform a 10-fold cross validation repeated 5 times.
+
+## Initialize Models
 
 ```{r}
 myControl = trainControl(method = 'cv', 
@@ -400,9 +430,9 @@ resamps = resamples(suite.of.models)
 dotplot(resamps, metric = 'RMSE')
 ```
 
-XGBoost perfomes best on the train data. Let's test it on the test data.
+XGBoost perfomes best on the training data. Let's test it on the test data.
 
-# TESTING MODELS ON TEST SET
+## TESTING MODELS ON TEST SET
 
 ```{r}
 Evaluate.Prediction <- function(model, model.label, testData, ytest, grid = NULL) {
@@ -445,13 +475,13 @@ kable(METRIC.GRID[order(METRIC.GRID$RMSE, decreasing=F),]) %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
 ```
 
-Also here, XGBoost has the smallest RMSE and highest R2. Let's tune this model for further examination
+Also here, XGBoost has the smallest RMSE and highest R2. Let's tune this model for further examination.
 
 # XGBoost Modelling
 
 ## Preprocessing
 
-First we start again by divide data into training and testing samples. Again, we use `price_m2` as a strata to ensure that the distribution of the response is eqaul between the testing and training sets. Then we create a recipe.
+First we start again by dividing the data into training and testing samples. Again, we use `price_m2` as a strata to ensure that the distribution of the response is eqaul between the testing and training sets. Then we create a recipe.
 
 ```{r}
 set.seed(123)
@@ -477,18 +507,14 @@ cv_folds <-recipes::bake(
     XGB_rec, 
     new_data = data_train)%>%  
   rsample::vfold_cv(v = 5)
-```
 
-Transform train and test data with recipe
-
-```{r, message = FALSE, warning = FALSE, results = FALSE, include = FALSE}
 train.ready<-juice(XGB_rec)
 test.ready<-bake(XGB_rec, new_data = data_test)
 ```
 
 ## Modelling specifications
 
-Define XGBoost modelling specifications and to be tuned hyperparameters
+Define XGBoost modelling specifications and hyper parameters for tuning.
 
 ```{r}
 Model.XGB <- 
@@ -514,9 +540,9 @@ XGB.aspects <-
     loss_reduction())
 ```
 
-### Srid Space
+### Grid Space
 
-Set up a grid space which covers the hyperparameters `XGB.aspects`.
+Set up a grid space which covers the hyper parameters `XGB.aspects`.
 
 ```{r}
 xgboost_grid <- 
@@ -534,9 +560,9 @@ add_model(Model.XGB) %>%
 add_formula(price_m2 ~ .)
 ```
 
-### Hyperparameter searching
+### Hyper parameter searching
 
-In this step R searches for the optimal hyperparameters by iteratively applying the different hyperparameters to multiple trainig samples. This step can take a while to compute.
+In this step R searches for the optimal hyper parameters by iteratively applying the different hyper parameters to multiple training samples. This step can take a while to compute.
 
 ```{r, eval=FALSE}
 'parallel_start(6)
@@ -555,7 +581,7 @@ saveRDS(TUNE.XGB, file = here("Data", "Tune_XGB.RData"))'
 
 ### Finalize optimal tune
 
-Extract parameters with lowest rmse
+Extract parameters with lowest RMSE.
 
 ```{r}
 TUNE.XGB <- readRDS(here("Data", "Houses_Bilbao","Tune_XGB.RData"))
@@ -572,7 +598,7 @@ finalize_workflow(param_final)
 
 ### Fit the final model
 
-#### Fit final model on the preprocessed training data.
+Fit final model on the preprocessed training data.
 
 ```{r}
 XGB.model <- xgboost_wf2 %>%
@@ -586,8 +612,10 @@ XGB.model %>%
   pull_workflow_fit() %>% 
   vip()
 ```
+The number of bathrooms, whether the appartment has a lift and the construction date seems to be the most important determinants for the square meter price. 
 
-#### Predict on thest set.
+### Predict on Test set.
+Let's evaluate the XGBoost model on the test data by computing the RMSE.
 
 ```{r}
 # use the training model fit to predict the test data
@@ -598,8 +626,10 @@ XGB_res <- bind_cols(XGB_res, test.ready %>% select(price_m2))
 XGB_metrics <- metric_set(yardstick::rmse, yardstick:: mae)
 
 kable(XGB_metrics(XGB_res, truth = price_m2, estimate = .pred))
+```
 
-
+We can asses the fit of the pridiction by plotting them against the actual observations from the testing samples. We can see that the model works good up to 5000 Euro per square meter. For higher the model tends to underestimate the real prices. 
+```{r}
 ggplot(XGB_res, aes(x = price_m2, y = .pred)) + 
     # Create a diagonal line:
     geom_abline(lty = 2) + 
@@ -611,7 +641,7 @@ ggplot(XGB_res, aes(x = price_m2, y = .pred)) +
 ```
 
 # Explainer
-
+Finaly, we can explore the model prediction using the Explainer from `modelstudio()` which supplies metrics on feature importance, drop dow charts and Shapley values.
 ```{r, message=FALSE, warning=FALSE}
 explainer<- explain_tidymodels(model = XGB.model,
                     data = test.ready,
