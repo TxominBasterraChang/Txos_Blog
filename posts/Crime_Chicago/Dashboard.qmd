@@ -1,0 +1,322 @@
+---
+title: "Crimes in Chicago"
+subtitle: "A little Investigation"
+author: "Txomin Basterra Chang"
+date: "2023-02-25"
+image: "image.png"
+categories: [Crime, Chicago, code, analysis]
+editor: visual
+---
+
+```{r setup, message=FALSE}
+library(tidyverse)
+library(here)
+library(timetk)
+library(kableExtra)
+library(highcharter)
+library(sf)
+library(janitor)
+library(lubridate)
+library(plotly)
+
+load(here("Data", "Crime_Chicago", "Chicago", "data.Rda"))
+DATA = data
+```
+
+# Analyse
+
+#### Allgemein
+
+Zum Datensatz: Die Daten zu den Kriminalstatistiken stammen von [Kaggle](https://www.kaggle.com/code/onlyrohit/criminal-activity-hotspots-identification/data). Das Shapfile von Chicago stammt von der Homepage der [City of Chicago](https://data.cityofchicago.org/). Folgende Varaiablen finden sich in der Kriminalstatistik:
+
+```{r}
+names(DATA)
+```
+
+Die Deliktinformationen lassen sich wie folgt kategorisieren:
+
+-   **inhaltlich:** "Primary Type", "Description", "Arest")
+
+-   **zeitlich:** "Date", "Updated On"
+
+-   **örtlich**: "Location", "Domestic", "Beat", "District", "Ward", "Community Area", "X Coordinate", "Y Coordinate", "Latitude", "Longitude"
+
+-   **formale**: "ID", "Case Number", FBI Code"
+
+Die allgemeinste inhaltliche Kategorisierung erfolgt durch den "Primary Type". Die Variable "Description" unterteilt jeden "Primary Type" jeweils noch in Subkategorien.
+
+Spezielles Augenmerk wird in diesem Dashboard auf den "Primary Type" "Narcotics" gelegt, welcher auf Platz 4 der häufigsten Delikttypen steht.
+
+#### Gesamtdelikte
+
+Bevor Drogendelikte betrachtet werden, schauen wir uns den gesamten Datensatz gebündelt an, um einen Überblick über die Gesamtentwicklung zu bekommen.
+
+```{r}
+
+DATA %>%   
+  mutate(Date = date(Date)) %>%
+  tabyl(Date) %>%
+  mutate(Year = substr(Date, 1, 4)) %>%
+  ggplot(aes(x = Date, y = n, group = Year)) + 
+  geom_boxplot() +
+  ggtitle("Gesamtdelikte (Boxplots pro Jahr)") +
+  theme_minimal() 
+
+```
+
+Delikte nehmen über die Zeit ab. Im Dashboard kann man ebenfalls sehen, dass die Fallzahlen über den Jahresverlauf Zyklen Weise auf- und abschwellen. Auffällig ist, dass am 31. Dezember jeden Jahres keine Delikte gemeldet sind. Besonders sticht die Fallzahl des 31. Mai 2020 heraus, welche wahrscheinlich mit den Ausschreitungen um den [Tod von George Floyd](https://www.chicagotribune.com/news/breaking/ct-george-floyd-chicago-protests-20200531-qghf4l7ysjgl3etxqu3jv6oq6a-story.html) zusammenhängt.
+
+#### Narcotics
+
+Wie oben beschrieben stehen etwa 7.5% aller Delikte im Zusammenhang mit Drogen. Innerhalb der Drogendelikte stellen Cannabis und Heroinbesitz die zwei häufigsten registrierten Straftaten dar. Cannabis (\<30g) in 39.5% und Heroin (Weiß) in 14.5% der Fälle.
+
+Auffällig ist der stätige Rückgang der Cannabisdelikte, welche besonders stark zwischen den Jahren 2015-2017 vonstatten gegangen ist. Bis in die Gegenwart hat sich das Level auf einem niedrigen Niveau eingependelt.
+
+Delikte bzgl. Heroinbesitzt haben sich über die Jahre nicht stark verändert und lagen bis Dezember 2016 immer unterhalb denen von Cannabis. Ähnlich wie bei Cannabis sind die Werte innerhalb der Jahren 2015-2017 (wenn auch nur schwach) gefallen.
+
+Der Besitz von Cannabis wurde im Staate Illinois (Chicago) zum 01.01.2020 legalisiert. Dennoch finden sich in der Statistik immer noch Fälle, die über dieses Datum hinaus gehen.
+
+#### Wieso sind die Zahlen gefallen?
+
+Im Jahre [2015](https://www.illinoispolicy.org/illinois-house-passes-marijuana-decriminalization-bill/) verkündete das Polizeipräsidium von Chicago ein neues Vorgehen, in welchem Bußgelder anstatt von Strafeinträgen in Fällen von Cannabisbesitz erteilt werden sollten, welches die Festnahmen deutlich senkte. Das Vorgehen folgt einem Bürgerentscheid aus dem Jahre 2012 nach, infolgedessen Cannabisbesitz in kleinen Mengen nicht strafrechtlich, sondern zivilrechtlich behandelt werden sollten.
+
+Im Jahre [2017](https://www.chicagotribune.com/news/breaking/ct-met-marijuana-legalize-illinois-cook-county-20180321-story.html) wurde im Staate Illinois ein Gesetz verabschiedet, welches den Konsum von medizinischen Marihuana erlaubt. Dies hat wohl auch zur Verringerung der Fallzahlen beigetragen.
+
+#### Räumliche Verteilung
+
+Drogendelikte und Kriminelle Aktivitäten im Allgemeinen konzentrieren sich stark auf den Bezirk Austin und die anliegenden Bezirke Humboldt Park, North Lawndale und West Garfield Park.
+
+##### Austin als Problembezirk
+
+Austin ist einer der 77 Bezirke Chicago und befindet sich im Westen der Stadt. Er ist der dritt größte Bezirk nach Bevölkerung und der zweit größte nach Fläche.
+
+Austin ist immer wieder wegen krimineller Aktivitäten negativ in die Schlagzeilen gekommen.
+
+-   <https://abc7chicago.com/chicago-crime-man-stabbed-austin-police/12715681/>
+
+-   <https://www.chicagotribune.com/news/ct-crime-in-chicago-20171114-storygallery.html>
+
+Die Daten des Dashboards zeigen insbesondere, dass Drogendelikte stark in diesem Bezirk konzentriert sind. Die Verteilung der Drogendelikte spiegelt die generelle Verteilung der Drogendelikte in ganz Chicago wider.
+
+# Dashboard
+
+### Gesammtdelikte
+
+```{r}
+p = data %>%   
+  mutate(Date = date(Date)) %>%
+  tabyl(Date) %>%
+  dplyr::rename(Anzahl = n) %>%
+  ggplot(aes(x = Date, y = Anzahl)) + 
+  geom_point(size = 0.2) +
+  geom_smooth() + 
+  theme_minimal()
+
+ggplotly(p)
+```
+
+### Canabis- und Heroin Delikte
+
+```{r}
+x1 <- data %>% 
+  mutate(Date = date(Date)) %>%
+  filter(`Primary Type` == "NARCOTICS") %>%
+  filter(Description == "POSS: CANNABIS 30GMS OR LESS") %>%
+  tabyl(Date) %>%
+  mutate(Group = "CANNABIS")
+
+x2 <- data %>% 
+  mutate(Date = date(Date)) %>%
+  filter(`Primary Type` == "NARCOTICS") %>%
+  filter(Description == "POSS: HEROIN(WHITE)") %>%
+  tabyl(Date) %>%
+  mutate(Group = "HEROIN")
+
+x3 <- data %>% 
+  mutate(Date = date(Date)) %>%
+  filter(`Primary Type` == "NARCOTICS") %>%
+  filter(Description == "POSS: HEROIN(WHITE)") %>%
+  tabyl(Date) %>%
+  mutate(Group = "HEROIN")
+
+x = rbind(x1, x2)
+x = x %>% dplyr::rename(Anzahl = n)
+
+p = x %>%
+  ggplot(aes(x = Date, y = Anzahl, colour = Group)) + 
+  geom_point(size = 0.2) +
+  geom_smooth() + 
+  theme_minimal()
+  
+ggplotly(p)
+```
+
+### Delikt Kategorien
+
+```{r}
+data %>% 
+  tabyl(`Primary Type`) %>% 
+  filter(percent > 0.01) %>%
+  mutate(percent = percent*100) %>%
+  arrange(desc(n)) %>%
+  hchart("bar",
+         hcaes(x = `Primary Type`, y = percent)) %>%
+  hc_add_theme(hc_theme_smpl())
+```
+
+### Arten von Drogen Delikten
+
+```{r}
+data %>%
+  filter(`Primary Type` == "NARCOTICS") %>%
+  tabyl(Description) %>% 
+  filter(percent > 0.01) %>%
+  mutate(percent = percent*100) %>%
+  arrange(desc(n)) %>%
+  hchart("bar",
+         hcaes(x = Description, y = percent)) %>%
+  hc_add_theme(hc_theme_smpl())
+```
+
+# Karte
+
+### Kummulierte Gesamtdelikte nach Community Areas
+
+```{r}
+Count_total = DATA %>%
+  tabyl(`Community Area`) %>%
+  arrange(desc(n)) %>%
+  mutate(percent = percent*100) %>%
+  dplyr::rename(Comm_Area = `Community Area`) %>%
+  dplyr::rename(percent_total = percent) %>%
+  dplyr::rename(n_total = n) 
+
+Count_narco = DATA %>%
+  filter(`Primary Type` == "NARCOTICS") %>%
+  tabyl(`Community Area`) %>%
+  arrange(desc(n)) %>%
+  mutate(percent = percent*100) %>%
+  dplyr::rename(Comm_Area = `Community Area`) %>%
+  dplyr::rename(percent_narco = percent) %>%
+  dplyr::rename(n_narco = n) 
+
+
+map = read_sf(here("Data", "Crime_Chicago","Boundaries_Community_Areas", "geo_export_ef0a0074-492a-41aa-90f3-965e6165ec88.shp"))
+map = map %>% dplyr::rename(Comm_Area = area_num_1) %>%
+  select(-c(area, area_numbe, comarea, comarea_id, perimeter))
+
+map = merge(x = map, y = Count_total, by = c("Comm_Area"), all.x = TRUE)
+map = merge(x = map, y = Count_narco, by = c("Comm_Area"), all.x = TRUE)
+
+ggplot() + 
+  geom_sf(data = map, mapping = aes(fill = n_total)) +
+  theme_minimal()
+```
+
+### Kummulierte Drogendelikte nach Community Areas
+
+```{r}
+ggplot() + 
+  geom_sf(data = map, mapping = aes(fill = n_narco)) +
+  theme_minimal()
+```
+
+### Gesamtdelikte (\> 2% der Gesamtdelikte)
+
+```{r}
+map %>% 
+  filter(percent_total > 2) %>%
+  mutate(percent_total = round(percent_total, 4)) %>%
+  arrange(desc(percent_total)) %>%
+  hchart("bar",
+         hcaes(x = community, y = percent_total)) %>%
+  hc_add_theme(hc_theme_smpl())
+```
+
+### Drogendelikte (\> 2% der Drogendelikte)
+
+```{r}
+map %>% 
+  filter(percent_narco > 2) %>%
+  mutate(percent_narco = round(percent_narco, 4)) %>%
+  arrange(desc(percent_narco)) %>%
+  hchart("bar",
+         hcaes(x = community, y = percent_narco)) %>%
+  hc_add_theme(hc_theme_smpl())
+```
+
+# Austin
+
+### Drogen in Austin
+
+```{r}
+Austin = DATA %>%
+  filter(`Community Area` ==25) %>%
+  filter(`Primary Type` == "NARCOTICS") %>%
+  tabyl(`Description`) %>%
+  arrange(desc(n)) %>%
+  dplyr::rename(percent_narco = percent) %>%
+  dplyr::rename(n_narco = n) 
+
+
+x1 =  DATA %>%
+  filter(`Community Area` ==25) %>%
+  filter(`Primary Type` == "NARCOTICS") %>%
+  filter(`Description` == "POSS: CANNABIS 30GMS OR LESS") %>%
+  mutate(Date = date(Date)) %>%
+  tabyl(Date) %>%
+  mutate(Group = "CANNABIS")
+
+x2 =  DATA %>%
+  filter(`Community Area` ==25) %>%
+  filter(`Primary Type` == "NARCOTICS") %>%
+  filter(`Description` == "POSS: HEROIN(WHITE)") %>%
+  mutate(Date = date(Date)) %>%
+  tabyl(Date) %>%
+  mutate(Group = "HEROIN")
+
+x3 =  DATA %>%
+  filter(`Community Area` ==25) %>%
+  filter(`Primary Type` == "NARCOTICS") %>%
+  filter(`Description` == "POSS: CRACK") %>%
+  mutate(Date = date(Date)) %>%
+  tabyl(Date) %>%
+  mutate(Group = "CRACK")
+
+x = rbind(x1, x2, x3)
+x = x %>% dplyr::rename(Anzahl = n)
+
+p = x %>%
+  ggplot(aes(x = Date, y = Anzahl, fill = Group)) + 
+  geom_bar(position="stack", stat="identity") +
+  geom_smooth() +
+  theme_minimal()
+ggplotly(p)
+```
+
+### Arten von Drogen Delikten
+
+```{r}
+Austin %>%
+  filter(percent_narco > 0.01) %>%
+  mutate(percent_narco = percent_narco*100) %>%
+  arrange(desc(percent_narco)) %>%
+  hchart("bar",
+         hcaes(x = Description, y = percent_narco)) %>%
+  hc_add_theme(hc_theme_smpl())
+```
+
+# Monatsentwicklung
+
+### Durchschnittliche Anzahl an Delikten nach Monaten
+
+```{r}
+data %>%
+  mutate(Date = date(Date)) %>%
+  tabyl(Date) %>%
+  mutate(Month = month(Date)) %>%
+  group_by(Month) %>%
+  summarise(Month_mean = mean(n)) %>%
+  hchart("column",
+         hcaes(x = Month, y = Month_mean))
+```
