@@ -25,5 +25,20 @@
   },
   "posts/Crime_Chicago/Dashboard.qmd": {
     "Dashboard.html": "85558e42"
+  },
+  "Bike_Munich.qmd": {
+    "Bike_Munich.html": "032e09b9"
+  },
+  "posts/Bike_Munich/Bike_Munich.qmd": {
+    "Bike_Munich.html": "a7f14248"
+  },
+  "posts/Houses_Bilbao/Houses_Bilbao.rmarkdown": {
+    "Houses_Bilbao.html": "dd45fc12"
+  },
+  "site_libs/d3v4-4.13.0/API.md": {
+    "API.html": "f2270f5b"
+  },
+  "site_libs/d3v4-4.13.0/CHANGES.md": {
+    "CHANGES.html": "acade011"
   }
 }

@@ -1,0 +1,412 @@
+---
+title: "Fahrradaktivität in München (2008-2022)"
+subtitle: "Eine kurze Analyse"
+author: "Txomin Basterra Chang"
+date: "2023-04-20"
+image: "image.png"
+categories: [Munich, Bike, code, analysis]
+editor: visual
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Auf dem [Open Data Portal](https://opendata.muenchen.de/) der Stadt München finden sich viele interessante Datensätze zu allen Möglichen Themen. Auf diesem befinden sich unteranderem die Daten der [Raddauerzählstellen](https://opendata.muenchen.de/dataset/daten-der-raddauerzaehlstellen-muenchen-jahreszahlen), welche eine herausragende Möglichkeiten bieten einen Einblick in die Fahrradaktivität in der Stadt München zu erlangen.
+
+Die Observationen werden an verschiedenen, innerhalb der City verteilten Zählstationen getätigt. Dabei wird im 15 Minuten Tackt gezählt wie viele Fahrradfahrerinnen innerhalb dieser Zeitspanne an der jeweilige
+
+Bei dem Datensatz, den ich in dieser Analyse vorstellen werde handelt es sich um [Tageswerte](https://opendata.muenchen.de/dataset/daten-der-raddauerzaehlstellen-muenchen-jahreszahlen/resource/53ef8c4b-d411-477f-9cf3-b044a4c1aaaa). Dabei werden die 15 minütigen Messungen auf den Tag kumuliert. Dieser Datensatz beinhalten neben der Fahrrad-Tagesaktivität auch Wetterdaten, wie etwa die Temperatur oder Sonnenstunden. Die Zeitreihe beginnt im Juni 2008 und läuft bis Dezember 2022.
+
+```{r, message=FALSE}
+library(tidyverse)
+library(here)
+library(lares)
+library(paletteer)
+library(kableExtra)
+library(mapview)
+library(ggpubr)
+library(GGally)
+library(janitor)
+library(jtools)
+options(dplyr.summarise.inform = FALSE)
+```
+
+```{r}
+load(here("Data", "Bike_Munich", "Rad_2008_2022_Tage_export_18_04_23_r.Rda"))
+data = data %>%
+  select(-c(uhrzeit_start, uhrzeit_ende, richtung_1, richtung_2)) 
+```
+
+# Datensatz
+
+Die Daten aus dem Portal sind bereits sauber aufbereitet. Die CSV-Dateien sind jährlich vorhanden und müssen lediglich vor der Analyse in ein großes Dataframe zusammengebastelt werden.
+
+```{r, warning=FALSE}
+data = data %>%
+  mutate(month = month(datum)) %>%
+  mutate(saison = case_when(month == "3" | month == "4" | month == "5" ~ "F",
+                            month == "6" | month == "7" | month == "8" ~ "S",
+                            month == "9" | month == "10" | month == "11" ~ "H",
+                            month == "12" | month == "1" | month == "2" ~ "W",)) %>%
+  mutate(wday = wday(datum)) %>%
+  mutate(weekend = case_when(wday == "1" | wday == "7" ~ 1)) %>%
+  select(-month)
+
+data$weekend <- data$weekend %>% replace(is.na(.), 0)
+
+save(data, file = here("Data", "Bike_Munich", "ML_data.Rda"))
+```
+
+Da es sich um eine Zeitreihe handelt, werde ich in den Datensatz noch die Variablen Jahreszeiten (`saison`), Wochentage (`wday`) und Wochenenden (`weekend`) einführen.
+
+```{r}
+data %>%
+  head(10) %>%
+  kable(caption = "Hauptdatensatz", center = TRUE) %>%
+  kable_styling(bootstrap_options = "striped", font_size = 12) %>%
+  kable_paper("hover", full_width = F)
+```
+
+In der Tabelle finden sich Information zur Fahrrad-Tagesaktivität pro Zählstation, Störungen im Betrieb, außerdem Daten zur Wetterlage in München.
+
+# Fahrradaktivität
+
+Verschaffen wir uns erst einmal einen Überblick über die Gesamtaktivität.
+
+```{r, warning=FALSE, message=FALSE}
+load(here("Data", "Bike_Munich", "ML_data.Rda"))
+
+data %>%
+  group_by(datum) %>%
+  summarise(Gesamt = sum(gesamt), 
+            Min.temp = mean(min.temp),
+            saison = saison) %>%
+  distinct() %>%
+  ggplot(aes(x = datum, y = Gesamt, color = saison)) +
+  geom_point(shape = 4, size = 0.7) +
+  geom_smooth(se = FALSE, size=0.7) +
+  ggtitle("Jahresentwicklung") +
+  theme_minimal() +
+  theme(axis.title.x=element_blank())
+```
+
+Wir können klar sehen, dass die Aktivität mit den Jahren zunimmt und eine zyklische Entwicklung aufweist: Die Aktivität steigt über das Jahr hinweg an und ebbt zum Ende wieder ab. Wie zu erwarten, fällt die Aktivität im Winter geringer aus als im Sommer. Die Messzahlen scheinen sich für den Herbst und Frühling jedoch zu ähneln.
+
+```{r, warning=FALSE}
+data %>%
+  group_by(datum) %>%
+  summarise(Gesamt = sum(gesamt),
+            saison = saison) %>%
+  ggplot(aes(x = Gesamt)) +
+  geom_histogram(bins = 50, color = "orange", fill = "white") +
+  facet_wrap(~ saison) +
+  theme_minimal() +
+  ggtitle("Aktivitätsverteilung") 
+```
+
+Die obige Grafik beschreibt die Verteilung der Aktivität nach Jahreszeit. Für die wärmeren Jahreszeiten ist die Verteilung etwas gestreckter, was bedeutet, dass es in ähnlichem Maße Tage mit viel aber auch wenig Aktivität gibt. Im Winter ist das Profil rechtsschief. D.h. dass es viele Tage gibt, an welchen keine oder wenig Aktivität bei Zählstationen gemessen wurde.
+
+## Fahrradaktivität nach Zählstationen
+
+München hat 6 Zählstation, welche über die Stadt verteilt sind. Wir sehen in der unteren Karte, dass die Stationen alle mehr oder weniger zentral gelegen sind. Nicht alle Stationen haben im selben Jahr angefangen zu messen. Mehr Informationen lassen sich durch das Klicken auf die Punkte herausfinden.
+
+```{r}
+load(here("Data", "Bike_Munich","data_zaehl.Rda"))
+
+ mapview(data_zaehl, zcol = "zaehlstelle") 
+```
+
+Die untere Grafik zeigt auf wie sich die Aktivität der verschiedenen Stationen über die Jahre entwickelt hat. Wie bei der Gesamtaktivität lässt sich auch bei den meisten Zählstationen ein zyklisches Wachstum beobachten. Auffällig sind die Frequenzunterschiede zwischen den Stationen. In manchen ist scheint die Aktivität durchgehend höher zu sein als in anderen.
+
+```{r, warning=FALSE, message=FALSE, fig.width=11, fig.height=8}
+data %>%
+  group_by(datum, zaehlstelle) %>%
+  summarise(Gesamt = sum(gesamt), 
+            Min.temp = mean(min.temp),
+            saison = saison) %>%
+  distinct() %>%
+  ggplot(aes(x = datum, y = Gesamt, color = zaehlstelle)) +
+  facet_wrap(~ zaehlstelle, ncol = 3) +
+  geom_line() +
+  ggtitle("Jahresentwicklung") +
+  theme_minimal() +
+  theme(axis.title.x=element_blank())
+```
+
+Ebenfalls interessant sind Ausreißer wie etwa bei der Zählstation Olympia (zwischen den Jahren 2012 und 2015). Diese sind vermutlich durch das [24h Mountain Bike Rennen](https://www.24hrace-muenchen.de/) im Olympia Park erzeugt worden (Eine Analyse dazu findet sich in [SOMTOMS Blog](https://somtom.github.io/post/munich-bike-data-info-graphic/)).
+
+Das Gesamtaktivitätsprofil lässt sich auch gut mit Boxplots darstellen. Die horizontal schraffierte Linie stellt den Gesamtmedian dar. **Erhardt** und **Margareten** sind die Stationen mit der höchsten Aktivität, deren Aktivität deutlich über dem Populationsmedian liegt.
+
+```{r, warning=FALSE}
+Median <- data %>%
+  summarise(Median = median(gesamt))
+Median <- Median$Median
+
+data %>%
+  group_by(zaehlstelle) %>%
+  ggplot(aes(x = zaehlstelle, y = gesamt, fill = zaehlstelle)) +
+  geom_boxplot() +
+  geom_hline(yintercept = Median, linetype="dashed", color = "black") + 
+  theme_minimal() +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ggtitle("Boxplots Tagesaktivität per Zählstelle") 
+```
+
+## Wochentage
+
+```{r, warning=FALSE, message=FALSE, include = FALSE}
+data %>%
+  group_by(datum) %>%
+  summarise(Gesamt = sum(gesamt)) %>%
+  distinct() %>%
+  summarise(Median = median(Gesamt))
+```
+
+```{r, warning=FALSE, message=FALSE}
+data %>%
+  group_by(datum) %>%
+  summarise(Gesamt = sum(gesamt), 
+            wday = wday) %>%
+  mutate(wday = case_when(wday == 1 ~ "Son",
+                             wday == 2 ~ "Mo",
+                             wday == 3 ~ "Di",
+                             wday == 4 ~ "Mi",
+                             wday == 5 ~ "Do",
+                             wday == 6 ~ "Fr",
+                             wday == 7 ~ "Sa")) %>%
+  distinct() %>%
+  ggplot(aes(x = wday, y = Gesamt, fill = wday)) +
+  geom_boxplot() +
+  geom_hline(yintercept = 7693, linetype="dashed", color = "black") + 
+  theme_minimal() +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  ggtitle("Boxplots Tagesaktivität per Wochentag") 
+```
+
+Am Wochenende wird weniger Aktivität gemessen. Die Wochenend-mediane liegen unterhalb des Gesamtmedian. Mehr Informationen über die tägliche und Wöchentliche Fahrradaktivität finden sich in dieser [Shiny App](https://txomin-basterra.shinyapps.io/Bike/?_ga=2.134499122.212500804.1681918025-1349417029.1679402124).
+
+# Beeinträchtigung
+
+In den Daten finden sich Informationen über Störungen und Beeinträchtigungen des Betriebs. Die untere Tabelle zeigt auf, dass in 93% aller Tage keine Beeinträchtigungen gemeldet wurde. </br>
+
+```{r}
+data %>%
+  rename(Beeinträchtigung = na) %>%
+  mutate(Beeinträchtigung = case_when(Beeinträchtigung == "N/A" ~ "Ja",
+                                      Beeinträchtigung != "N/A" ~ "Nein")) %>%
+  tabyl(Beeinträchtigung) %>%
+  select(-valid_percent) %>%
+  kable(caption = "Anteil der Störfälle", digits = 3, center = TRUE) %>%
+  kable_paper("hover")
+```
+
+Unter den Beeinträchtigungen finden sich verschiedene Klassifikationen, wobei "`Zählstelle noch nicht in Betrieb`" und "`Baustelle`" die häufigsten beeinträchtigungs Gründe darstellen. Für 10% der Beeinträchtigung gibt es keine Klassifizierung.
+
+</br>
+
+```{r}
+data %>%
+  mutate(kommentar = ifelse(is.na(na) == FALSE & is.na(kommentar) == TRUE, "Unklassifiziert", kommentar)) %>%
+  rename(Kommentar = kommentar) %>%
+  drop_na() %>%
+  tabyl(Kommentar) %>%
+  arrange(desc(n)) %>%
+  kable(caption = "Störungstypen", digits = 3, center = TRUE) %>%
+  kable_paper("hover")
+```
+
+</br>
+
+Die Beeinträchtigungen im Betrieb können auch zeitlich je Zählstelle untersucht werden.
+
+```{r, fig.width=11, fig.height=5, warning=FALSE, message=FALSE}
+data %>% 
+  mutate(kommentar = ifelse(is.na(na) == FALSE & is.na(kommentar) == TRUE, "NA", kommentar)) %>%
+  drop_na() %>%
+  ggplot(aes(x = datum, y = kommentar, color = zaehlstelle )) +
+  geom_point(shape = 15, size = 2) +
+  theme_minimal() + 
+  labs(title = "Beeinträchtigung im Betrieb") +
+  xlab("Datum") +
+  theme(axis.title.x=element_blank(),
+        axis.title.y=element_blank()) 
+```
+
+# Wetter Daten
+
+Die Jahreszeiten scheinen stark mit der Tagesaktivität in Verbindung zu stehen. Um dies genauer zu untersuchen ist es sinnvoll sich die Verteilung Wetter-Variablen genauer anzuschauen.
+
+```{r, fig.width=11, fig.height=8, warning=FALSE, message=FALSE}
+p1 = data %>%
+  ggplot(aes(x = min.temp)) +
+  geom_histogram(aes(y=..density..), color="#B99095", fill="white", bins = 100) +
+  geom_density(color="#B99095") +
+  theme_minimal() 
+
+p2 = data %>%
+  ggplot(aes(x =  max.temp)) +
+  geom_histogram(aes(y=..density..), color="#FCB5AC", fill="white", bins = 100) +
+  geom_density(color="#FCB5AC") +
+  theme_minimal() 
+
+p3 = data %>%
+  ggplot(aes(x =  niederschlag)) +
+  geom_histogram(aes(y=..density..), color="#2D1674", fill="white", bins = 100) +
+  geom_density(color="#2D1674") +
+  theme_minimal() 
+
+p4 = data %>%
+  ggplot(aes(x =  bewoelkung)) +
+  geom_histogram(aes(y=..density..), color="#3D5B59", fill="white", bins = 100) +
+  geom_density(color="#3D5B59") +
+  theme_minimal() 
+
+p5 = data %>%
+  ggplot(aes(x =  sonnenstunden)) +
+  geom_histogram(aes(y=..density..), color="#29A0B1", fill="white", bins = 100) +
+  geom_density(color="#29A0B1") +
+  theme_minimal() 
+
+ggarrange(p1, p2, p4, p5, p3,
+          ncol = 2, nrow = 3) 
+```
+
+In München scheint es viele Tage mit wenig Regen, wenig Sonne und starker Bewölkung zu geben. Die Temperatur befindet sich meistens zwischen 0-20 Grad.
+
+## Wetter und Aktivität
+
+Schauen wir uns die Beziehung zwischen dem Wetter und der Fahrradaktivität an.
+
+```{r, message=FALSE, warning=FALSE, fig.width=11, fig.height=8}
+p1 = data %>%
+  group_by(datum) %>%
+  summarise(Gesamt = sum(gesamt), 
+            Min.temp = mean(min.temp),
+            saison = saison) %>%
+  distinct() %>%
+  ggplot(aes(x = Min.temp, y = Gesamt)) +
+  geom_point(aes(color = saison), size=0.7) +
+  geom_smooth() +
+  theme_minimal() 
+
+
+p2 = data %>%
+  group_by(datum) %>%
+  summarise(Gesamt = sum(gesamt), 
+            Max.temp = mean(max.temp),
+            saison = saison) %>%
+  distinct() %>%
+  ggplot(aes(x = Max.temp, y = Gesamt)) +
+  geom_point(aes(color = saison), size=0.7, show.legend = FALSE) +
+  geom_smooth() +
+  theme_minimal() 
+
+p3 = data %>%
+  group_by(datum) %>%
+  summarise(Gesamt = sum(gesamt), 
+            Niederschlag = mean(niederschlag),
+            saison = saison) %>%
+  distinct() %>%
+  ggplot(aes(x = Niederschlag, y = Gesamt)) +
+  geom_point(aes(color = saison), size=0.7, show.legend = FALSE) +
+  geom_smooth() +
+  theme_minimal() 
+
+p4 = data %>%
+  group_by(datum) %>%
+  summarise(Gesamt = sum(gesamt), 
+            Bewoelkung = mean(bewoelkung),
+            saison = saison) %>%
+  distinct() %>%
+  ggplot(aes(x = Bewoelkung, y = Gesamt)) +
+  geom_point(aes(color = saison), size=0.7, show.legend = FALSE) +
+  geom_smooth() +
+  theme_minimal() 
+
+p5 = data %>%
+  group_by(datum) %>%
+  summarise(Gesamt = sum(gesamt), 
+            Sonnenstunden = mean(sonnenstunden),
+            saison = saison) %>%
+  distinct() %>%
+  ggplot(aes(x = Sonnenstunden, y = Gesamt)) +
+  geom_point(aes(color = saison), size=0.7, show.legend = FALSE) +
+  geom_smooth() +
+  theme_minimal() 
+
+
+ggarrange(p1, p2, p4, p5, p3,
+          ncol = 2, nrow = 3, common.legend = TRUE)
+```
+
+Min und Max Temperatur sind positiv mit der Aktivität assoziiert. Das Verhältnis scheint dabei linear zu sein. D.h. dass eine Temperaturerhöhung um n Grad ungefähr eine Aktivitätssteigerung um x Fahrradfahrerinnen mit sich bringt. Ähnliches gilt für Sonnenstunden. Bei der Bewölkung haben wir eine negative Assoziation.
+
+Auf den ersten Blick scheint die Stärke des Niederschlags keinen besonderen Einfluss auf Fahrradaktivität zu haben. Das liegt vielleicht daran, dass es in München generell wenig regnet und der Trend durch große Regen-Ausreißer verzerrt wird. Beschränken wir die Observation auf das 95% Quantil der Regen Daten.
+
+```{r, results='hide'}
+quantile(data$niederschlag, probs = 0.95)
+```
+
+```{r, warning=FALSE, message=FALSE}
+data %>%
+  group_by(datum) %>%
+  filter(niederschlag <= 12.1 ) %>%
+  summarise(Gesamt = sum(gesamt), 
+            Niederschlag = mean(niederschlag)) %>%
+  distinct() %>%
+  ggplot(aes(x = Niederschlag, y = Gesamt)) +
+  geom_point(shape = 15, size = 2) +
+  geom_smooth() +
+  theme_minimal() +
+  labs(title = "Niederschlag und Aktivität",
+       subtitle = "Beschränkt auf das 95% Quantil")
+
+```
+
+Bei kleinen Werten scheint es einen leichten negativen Trend zu geben. Allgemein betrachtet ist der Trend jedoch schwachen.
+
+# Korrelationen
+
+Um den Überblick über den Datensatz abzuschließen schauen wir uns noch die Korrelationen zwischen den Variablen an. Dieser Schritt kann für spätere Modellvierungen besonders wichtig werden.
+
+```{r, message=FALSE, warning=FALSE}
+data %>%
+  select(gesamt, min.temp, max.temp, niederschlag, bewoelkung, sonnenstunden, saison) %>%
+  ggcorr(label = TRUE, label_size = 2, label_color = "white") +
+  scale_fill_paletteer_c("viridis::plasma") +
+  labs(title = "Correlations (Numeric Variables)")
+```
+
+Wir sehen, dass `min.temp` und `max.temp` stark korreliert sind. Da wir keine zu starken Korrelationen zwischen unseren Features haben wollen, sollten wir eine dieser Variablen beim modellieren entfernen.
+
+```{r, warning=FALSE, message=FALSE}
+data %>%
+  corr_var(gesamt)
+```
+
+Interessant ist besonders, welche Variablen in welchem Grad zum Aktivitätsvolumen beitragen. Die obige Grafik zeigt auf, dass die Zählstelle **Erhardt** den größten positiven Impakt auf die Aktivität hat. `max.temp` und `sonnenstunden` sind ebenfalls sehr wichtig. Wenn die Aktivität in der Zählstelle **Kreuther** gemessen wurde, dann ist die Chance relativ groß, dass die Aktivität nicht besonders hoch ausgefallen ist.
+
+Wie bereits oben erwähnt scheint der Niederschlag keine bedeutende Rolle für die gemessene Fahrradmobilität zu spielen.
+
+## Regression
+
+Ein einfaches Model für das Verständnis der Einflussfaktoren ist die lineare Regression:
+
+```{r, warning=FALSE, message=FALSE}
+model <- lm(gesamt ~ min.temp + niederschlag + bewoelkung + sonnenstunden + wday, data = data )
+```
+
+</br>
+
+```{r, warning=FALSE, message=FALSE}
+plot_summs(model)
+```
+
+Wir sehen, dass die Sonnenstunden den größten Einfluss auf die Tagesaktivität hat. Noch größer als die Temperatur. Je sonniger es in München ist, desto mehr wird an den Stationen gemessen.
+
+Interessanterweise scheint Niederschlag nun einen signifikanten negativen Einfluss auf die Aktivität zu haben. Das dieses Verhältnis vorher nicht aufgefallen ist mag vielleicht daran gelegen haben, dass Niederschlag positiv mit dem positiven Einflussfaktor Temperatur korreliert ist und der negative Effekt dadurch übertüncht wurde.

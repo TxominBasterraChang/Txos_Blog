@@ -172,7 +172,8 @@ Bilbao %>%
   ggtitle("Boxplots of price_m2 per district") +
   scale_y_continuous(labels = scales::dollar_format(prefix = "€"))
 ```
-The districts Abando/Albia and Indautxu stand out for having particularly high square meter prices which are pushing the population median upwards. The differences between the other districts are comparabily not so high.  
+
+The districts Abando/Albia and Indautxu stand out for having particularly high square meter prices which are pushing the population median upwards. The differences between the other districts are comparabily not so high.
 
 Let's also have a look on the general distribution of `price_m2`
 
@@ -185,7 +186,7 @@ Bilbao %>%
   theme_minimal() 
 ```
 
-The distribution is relatively normal with a slight skewness to the right. 
+The distribution is relatively normal with a slight skewness to the right.
 
 # Overview of house features
 
@@ -211,6 +212,7 @@ Bilbao %>%
         axis.ticks.x=element_blank()) +
   labs(title = "Percentage of Rooms per District")
 ```
+
 Most dwellings have 3 rooms. Interestingly Casco Viejo has a ove rproportionally many one room appartments while Indautxu and Abando have proportionally the largest number of 5 rooms.
 
 ```{r, fig.width=11, fig.height=8}
@@ -222,7 +224,8 @@ Bilbao %>%
   labs(title = "Price_m2 per Heating Type") +
   scale_y_continuous(labels = scales::dollar_format(prefix = "€"))
 ```
-The type of heating doesn't seem to affect very much. 
+
+The type of heating doesn't seem to affect very much.
 
 ```{r, fig.width=11, fig.height=8}
 Bilbao %>%
@@ -243,6 +246,7 @@ Bilbao %>%
         axis.ticks.x=element_blank()) +
   labs(title = "Absolute Count of House Condition per District")
 ```
+
 The majority of houses in the markets are second hand appartments in good condition.
 
 ```{r, fig.width=11, fig.height=8}
@@ -253,6 +257,7 @@ Bilbao %>%
   theme_minimal() +
   labs(title = "Price_m2 per Condition") 
 ```
+
 At first sight, it seems counter intuitive that new apartments cost less than second hand per sqare meter. Because of the hilliness of Bilbao, it might be that the new buildings are build in more peripheral areas of a district and therefore have a lower square meter price.
 
 # Construction Date
@@ -260,7 +265,8 @@ At first sight, it seems counter intuitive that new apartments cost less than se
 ```{r}
 scatterplot(price_m2 ~ construct_date, data = Bilbao, grid = FALSE)
 ```
-We see that there obvious relation between construction year and square meter price. Ad the same time we can observe that a great amount of houses were built during the period 1960-1975 corresponding to large migration from other Spanish provinces. 
+
+We see that there obvious relation between construction year and square meter price. Ad the same time we can observe that a great amount of houses were built during the period 1960-1975 corresponding to large migration from other Spanish provinces.
 
 # Development of Housing and Price
 
@@ -275,7 +281,8 @@ Bilbao %>%
   labs(title = "High density regions (Price_m2 ~ Date)") +
   facet_wrap(~ loc_district)
 ```
-We can see that houses within district often share similar price ranges and construction years. Some older district live through a longer period of continuous construction, whereas in other construction seemed to had ben concentrated in smaller period. 
+
+We can see that houses within district often share similar price ranges and construction years. Some older district live through a longer period of continuous construction, whereas in other construction seemed to had ben concentrated in smaller period.
 
 ```{r, fig.width=11, fig.height=8}
 Bilbao %>%
@@ -287,11 +294,12 @@ Bilbao %>%
   theme_tq() +
   labs(title = "High density regions certain Neighborhoods")
 ```
+
 The clustering is specially visible for theese districts in a single graph.
 
 # Looking at Correlations
 
-First, let us look at the correlations between all numeric features and response. 
+First, let us look at the correlations between all numeric features and response.
 
 ```{r, message=FALSE, fig.width=7, fig.height=7}
 
@@ -303,15 +311,17 @@ ggcorr(numeric, label = TRUE, label_size = 2, label_color = "white") +
   labs(title = "Correlations (Numeric Variables)")
 ```
 
-Especially important are the correlations with response variable. 
+Especially important are the correlations with response variable.
 
 ```{r, message=FALSE, fig.width=7, fig.height=7}
 Bilbao %>%
   corr_var(price_m2)
 ```
-Using the simple correlation we can see that being loacted in the district of Abando/Albia has the highest positive correlation with the square meter price. 
+
+Using the simple correlation we can see that being loacted in the district of Abando/Albia has the highest positive correlation with the square meter price.
 
 # Modeling
+
 Now, since we got an overview of the data, we can start to analyzenthe relationships between the features and the response more in depth.
 
 ## Splitting the Data
@@ -353,7 +363,6 @@ trainSet = as.data.frame((trainSet.prep))
 testSet.prep<-bake(model_rec, new_data = data_test, composition='matrix')
 testSet = as.data.frame((testSet.prep))
 ```
-
 
 # Experimenting with various Models
 
@@ -612,9 +621,11 @@ XGB.model %>%
   pull_workflow_fit() %>% 
   vip()
 ```
-The number of bathrooms, whether the appartment has a lift and the construction date seems to be the most important determinants for the square meter price. 
+
+The number of bathrooms, whether the appartment has a lift and the construction date seems to be the most important determinants for the square meter price.
 
 ### Predict on Test set.
+
 Let's evaluate the XGBoost model on the test data by computing the RMSE.
 
 ```{r}
@@ -628,7 +639,8 @@ XGB_metrics <- metric_set(yardstick::rmse, yardstick:: mae)
 kable(XGB_metrics(XGB_res, truth = price_m2, estimate = .pred))
 ```
 
-We can asses the fit of the pridiction by plotting them against the actual observations from the testing samples. We can see that the model works good up to 5000 Euro per square meter. For higher the model tends to underestimate the real prices. 
+We can asses the fit of the pridiction by plotting them against the actual observations from the testing samples. We can see that the model works good up to 5000 Euro per square meter. For higher the model tends to underestimate the real prices.
+
 ```{r}
 ggplot(XGB_res, aes(x = price_m2, y = .pred)) + 
     # Create a diagonal line:
@@ -641,7 +653,9 @@ ggplot(XGB_res, aes(x = price_m2, y = .pred)) +
 ```
 
 # Explainer
+
 Finaly, we can explore the model prediction using the Explainer from `modelstudio()` which supplies metrics on feature importance, drop dow charts and Shapley values.
+
 ```{r, message=FALSE, warning=FALSE}
 explainer<- explain_tidymodels(model = XGB.model,
                     data = test.ready,

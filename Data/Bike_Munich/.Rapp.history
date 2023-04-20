@@ -1,0 +1,2 @@
+load("/Users/txomin/Desktop/Txos_Blog/Data/Bike_Munich/data_zaehl.Rda")
+load("/Users/txomin/Desktop/Txos_Blog/Data/Bike_Munich/ML_data.Rda")
