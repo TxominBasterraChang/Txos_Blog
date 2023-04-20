@@ -1,6 +1,6 @@
 ---
-title: "Fahrradaktivität in München (2008-2022)"
-subtitle: "Eine kurze Analyse"
+title: "Fahrradaktivität in München"
+subtitle: "Eine kurze Analyse der Jahre 2008-2022 "
 author: "Txomin Basterra Chang"
 date: "2023-04-20"
 image: "image.png"
@@ -18,6 +18,7 @@ Die Observationen werden an verschiedenen, innerhalb der City verteilten Zählst
 
 Bei dem Datensatz, den ich in dieser Analyse vorstellen werde handelt es sich um [Tageswerte](https://opendata.muenchen.de/dataset/daten-der-raddauerzaehlstellen-muenchen-jahreszahlen/resource/53ef8c4b-d411-477f-9cf3-b044a4c1aaaa). Dabei werden die 15 minütigen Messungen auf den Tag kumuliert. Dieser Datensatz beinhalten neben der Fahrrad-Tagesaktivität auch Wetterdaten, wie etwa die Temperatur oder Sonnenstunden. Die Zeitreihe beginnt im Juni 2008 und läuft bis Dezember 2022.
 
+
 ```{r, message=FALSE}
 library(tidyverse)
 library(here)
@@ -29,36 +30,18 @@ library(ggpubr)
 library(GGally)
 library(janitor)
 library(jtools)
+library(Rfssa)
 options(dplyr.summarise.inform = FALSE)
+
+load_github_data("https://github.com/TxominBasterraChang/txos_blog/blob/main/Data/Bike_Munich/ML_data.Rda")
 ```
 
-```{r}
-load(here("Data", "Bike_Munich", "Rad_2008_2022_Tage_export_18_04_23_r.Rda"))
-data = data %>%
-  select(-c(uhrzeit_start, uhrzeit_ende, richtung_1, richtung_2)) 
-```
 
 # Datensatz
 
 Die Daten aus dem Portal sind bereits sauber aufbereitet. Die CSV-Dateien sind jährlich vorhanden und müssen lediglich vor der Analyse in ein großes Dataframe zusammengebastelt werden.
 
-```{r, warning=FALSE}
-data = data %>%
-  mutate(month = month(datum)) %>%
-  mutate(saison = case_when(month == "3" | month == "4" | month == "5" ~ "F",
-                            month == "6" | month == "7" | month == "8" ~ "S",
-                            month == "9" | month == "10" | month == "11" ~ "H",
-                            month == "12" | month == "1" | month == "2" ~ "W",)) %>%
-  mutate(wday = wday(datum)) %>%
-  mutate(weekend = case_when(wday == "1" | wday == "7" ~ 1)) %>%
-  select(-month)
-
-data$weekend <- data$weekend %>% replace(is.na(.), 0)
-
-save(data, file = here("Data", "Bike_Munich", "ML_data.Rda"))
-```
-
-Da es sich um eine Zeitreihe handelt, werde ich in den Datensatz noch die Variablen Jahreszeiten (`saison`), Wochentage (`wday`) und Wochenenden (`weekend`) einführen.
+Da es sich um eine Zeitreihe handelt, habe ich in dem Datensatz noch die Variablen Jahreszeiten (`saison`), Wochentage (`wday`) und Wochenenden (`weekend`) beigefühgt.
 
 ```{r}
 data %>%
@@ -75,8 +58,6 @@ In der Tabelle finden sich Information zur Fahrrad-Tagesaktivität pro Zählstat
 Verschaffen wir uns erst einmal einen Überblick über die Gesamtaktivität.
 
 ```{r, warning=FALSE, message=FALSE}
-load(here("Data", "Bike_Munich", "ML_data.Rda"))
-
 data %>%
   group_by(datum) %>%
   summarise(Gesamt = sum(gesamt), 
@@ -112,7 +93,7 @@ Die obige Grafik beschreibt die Verteilung der Aktivität nach Jahreszeit. Für 
 München hat 6 Zählstation, welche über die Stadt verteilt sind. Wir sehen in der unteren Karte, dass die Stationen alle mehr oder weniger zentral gelegen sind. Nicht alle Stationen haben im selben Jahr angefangen zu messen. Mehr Informationen lassen sich durch das Klicken auf die Punkte herausfinden.
 
 ```{r}
-load(here("Data", "Bike_Munich","data_zaehl.Rda"))
+load_github_data("https://github.com/TxominBasterraChang/txos_blog/blob/main/Data/Bike_Munich/data_zaehl.Rda")
 
  mapview(data_zaehl, zcol = "zaehlstelle") 
 ```
