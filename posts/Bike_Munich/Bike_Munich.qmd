@@ -1,6 +1,6 @@
 ---
 title: "Fahrradaktivität in München"
-subtitle: "Eine kurze Analyse der Jahre 2008-2022 "
+subtitle: "Eine Analyse der Raddauerzählstellen 2008-2022 "
 author: "Txomin Basterra Chang"
 date: "2023-04-20"
 image: "image.png"
